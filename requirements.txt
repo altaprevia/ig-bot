@@ -1,2 +1,3 @@
-pyTelegramBotAPI
-instagrapi
+pyTelegramBotAPI==4.14.0
+instagrapi==2.0.0
+ffmpeg-python==0.2.0

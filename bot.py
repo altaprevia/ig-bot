@@ -2,6 +2,8 @@ import os
 import telebot
 from instagrapi import Client
 import threading
+import subprocess
+import json
 
 # ============================================
 # CONFIGURACIÓN
@@ -22,19 +24,88 @@ if not os.path.exists(DOWNLOAD_FOLDER):
     os.makedirs(DOWNLOAD_FOLDER)
 
 # ============================================
-# LOGIN INSTAGRAM - Solo carga sesión existente
+# FUNCIONES DE VIDEO
+# ============================================
+def get_video_codec(file_path):
+    """Detecta el códec del video usando ffprobe."""
+    try:
+        cmd = [
+            'ffprobe', '-v', 'quiet',
+            '-print_format', 'json',
+            '-show_streams',
+            file_path
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        data = json.loads(result.stdout)
+        
+        for stream in data.get('streams', []):
+            if stream.get('codec_type') == 'video':
+                return stream.get('codec_name', 'unknown')
+        return 'unknown'
+    except Exception as e:
+        print(f"Error detectando códec: {e}")
+        return 'unknown'
+
+
+def convert_to_h264(input_path, output_path):
+    """Convierte video HEVC a H.264 (más compatible)."""
+    try:
+        print(f"🔄 Convirtiendo {input_path} a H.264...")
+        
+        cmd = [
+            'ffmpeg', '-y',
+            '-i', input_path,
+            '-c:v', 'libx264',
+            '-preset', 'fast',
+            '-crf', '23',
+            '-c:a', 'aac',
+            '-b:a', '128k',
+            '-movflags', '+faststart',
+            output_path
+        ]
+        
+        subprocess.run(cmd, capture_output=True)
+        
+        if os.path.exists(output_path):
+            print("✅ Conversión exitosa")
+            return True
+        return False
+    except Exception as e:
+        print(f"Error convirtiendo: {e}")
+        return False
+
+
+def process_video_for_sending(file_path):
+    """Procesa el video antes de enviar: detecta códec y convierte si es necesario."""
+    codec = get_video_codec(file_path)
+    print(f"📹 Códec detectado: {codec}")
+    
+    # Si es HEVC/H.265, convertir a H.264
+    if codec in ['hevc', 'h265', 'libx265']:
+        print("⚠️ Video en HEVC, convirtiendo a H.264...")
+        output_path = file_path.replace('.mp4', '_h264.mp4')
+        
+        if convert_to_h264(file_path, output_path):
+            # Eliminar original y usar el convertido
+            os.remove(file_path)
+            return output_path
+    
+    # Si no es HEVC, devolver original
+    return file_path
+
+
+# ============================================
+# LOGIN INSTAGRAM
 # ============================================
 def login_instagram():
-    """Carga la sesión guardada SIN hacer login nuevo."""
     try:
         SESSION_FILE = "session.json"
         if os.path.exists(SESSION_FILE):
             cl.load_settings(SESSION_FILE)
-            print("✅ Sesión cargada correctamente.")
+            print("✅ Sesión cargada.")
             return True
-        else:
-            print("❌ No existe session.json. Sube el archivo.")
-            return False
+        print("❌ No existe session.json")
+        return False
     except Exception as e:
         print(f"❌ Error cargando sesión: {e}")
         return False
@@ -55,7 +126,7 @@ main_keyboard.add("📊 Estado", "❓ Ayuda")
 def handle_start(message):
     bot.send_message(
         message.chat.id, 
-        "👋 *¡Bienvenido!*\n\nEnvía un enlace de Instagram para descargar.",
+        "👋 *¡Bienvenido!*\n\nEnvía un enlace de Instagram para descargar.\n\n✅ Videos convertidos a formato compatible.",
         parse_mode='Markdown',
         reply_markup=main_keyboard
     )
@@ -65,7 +136,7 @@ def handle_start(message):
 def handle_help(message):
     bot.send_message(
         message.chat.id, 
-        "📚 *Ayuda*\n\nEnvía un enlace de Instagram.\n\nSoporta: Posts, Reels, Stories, Carruseles.",
+        "📚 *Ayuda*\n\nEnvía un enlace de Instagram.\n\nLos videos HEVC se convierten automáticamente a H.264 para máxima compatibilidad.",
         parse_mode='Markdown'
     )
 
@@ -75,7 +146,7 @@ def handle_status(message):
     ig_status = '✅ Conectado' if cl.user_id else '❌ No conectado'
     bot.send_message(
         message.chat.id, 
-        f"📊 Estado:\n\n🤖 Bot: ✅\n📸 Instagram: {ig_status}",
+        f"📊 Estado:\n\n🤖 Bot: ✅\n📸 Instagram: {ig_status}\n🎬 Conversión H.264: ✅",
         parse_mode='Markdown'
     )
 
@@ -86,9 +157,9 @@ def handle_status(message):
 @bot.message_handler(func=lambda m: m.text in ["📥 Cómo usar", "ℹ️ Info", "📊 Estado", "❓ Ayuda"])
 def handle_buttons(message):
     if message.text == "📥 Cómo usar":
-        bot.send_message(message.chat.id, "📥 Pega un enlace de Instagram y listo.", parse_mode='Markdown')
+        bot.send_message(message.chat.id, "📥 Pega un enlace de Instagram.\n\nLos videos se convierten automáticamente para ser compatibles con todos los dispositivos.", parse_mode='Markdown')
     elif message.text == "ℹ️ Info":
-        bot.send_message(message.chat.id, "ℹ️ Bot Instagram v2.0\n\n✅ Posts\n✅ Reels\n✅ Stories\n✅ Carruseles", parse_mode='Markdown')
+        bot.send_message(message.chat.id, "ℹ️ Bot Instagram v2.1\n\n✅ Posts\n✅ Reels\n✅ Stories\n✅ Carruseles\n✅ Conversión automática H.264", parse_mode='Markdown')
     elif message.text == "📊 Estado":
         handle_status(message)
     elif message.text == "❓ Ayuda":
@@ -133,13 +204,22 @@ def process_story(message, url):
                 raise Exception("No hay stories")
         
         if file_path:
-            if str(file_path).endswith('.mp4'):
+            file_path = str(file_path)
+            
+            # Si es video, procesar códec
+            if file_path.endswith('.mp4'):
+                bot.send_message(message.chat.id, "🎬 Procesando video...")
+                file_path = process_video_for_sending(file_path)
+            
+            if file_path.endswith('.mp4'):
                 with open(file_path, 'rb') as f:
                     bot.send_video(message.chat.id, f, caption="✅ Story")
             else:
                 with open(file_path, 'rb') as f:
                     bot.send_photo(message.chat.id, f, caption="✅ Story")
-            os.remove(file_path)
+            
+            if os.path.exists(file_path):
+                os.remove(file_path)
         
         set_reaction(message.chat.id, message.message_id, '✅')
     except Exception as e:
@@ -165,7 +245,11 @@ def process_post(message, url):
         
         # Video/Reel
         elif media_info.media_type == 2:
-            file_path = cl.video_download(media_pk, folder=DOWNLOAD_FOLDER)
+            file_path = str(cl.video_download(media_pk, folder=DOWNLOAD_FOLDER))
+            
+            bot.send_message(message.chat.id, "🎬 Procesando video...")
+            file_path = process_video_for_sending(file_path)
+            
             with open(file_path, 'rb') as f:
                 bot.send_video(message.chat.id, f, caption="✅ Video")
             os.remove(file_path)
@@ -180,10 +264,13 @@ def process_post(message, url):
                 try:
                     bot.send_message(message.chat.id, f"⬇️ {i+1}/{total}")
                     if r.media_type == 2:
-                        fp = cl.video_download(r.pk, folder=DOWNLOAD_FOLDER)
+                        fp = str(cl.video_download(r.pk, folder=DOWNLOAD_FOLDER))
+                        # Procesar video
+                        bot.send_message(message.chat.id, f"🎬 Procesando video {i+1}...")
+                        fp = process_video_for_sending(fp)
                     else:
-                        fp = cl.photo_download(r.pk, folder=DOWNLOAD_FOLDER)
-                    files.append((str(fp), r.media_type))
+                        fp = str(cl.photo_download(r.pk, folder=DOWNLOAD_FOLDER))
+                    files.append((fp, r.media_type))
                 except Exception as e:
                     print(f"Error elemento {i+1}: {e}")
             
@@ -252,5 +339,5 @@ def handle_unknown(message):
 # INICIAR BOT
 # ============================================
 if __name__ == '__main__':
-    print("🤖 Bot iniciado...")
+    print("🤖 Bot iniciado con soporte de conversión H.264...")
     bot.infinity_polling(timeout=10, long_polling_timeout=5, skip_pending=True)
