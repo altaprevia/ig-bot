@@ -25,20 +25,18 @@ if not os.path.exists(DOWNLOAD_FOLDER):
 # LOGIN INSTAGRAM
 # ============================================
 def login_instagram():
-    """Intenta loguearse en Instagram."""
+    """Carga la sesión existente SIN hacer login nuevo."""
     try:
         SESSION_FILE = "session.json"
         if os.path.exists(SESSION_FILE):
             cl.load_settings(SESSION_FILE)
-            print("📁 Sesión anterior encontrada.")
-        
-        print("Intentando login en Instagram...")
-        cl.login(IG_USER, IG_PASS)
-        cl.dump_settings(SESSION_FILE)
-        print("✅ Login exitoso.")
-        return True
+            print("✅ Sesión cargada correctamente.")
+            return True
+        else:
+            print("❌ No existe session.json. Sube el archivo a Railway.")
+            return False
     except Exception as e:
-        print(f"❌ Error de login en Instagram: {e}")
+        print(f"❌ Error cargando sesión: {e}")
         return False
 
 login_instagram()
