@@ -11,7 +11,7 @@ IG_USER = os.environ.get('IG_USER')
 IG_PASS = os.environ.get('IG_PASS')
 
 if not TOKEN_TELEGRAM or not IG_USER or not IG_PASS:
-    print("ERROR: Faltan variables de entorno (TOKEN_TELEGRAM, IG_USER, IG_PASS).")
+    print("ERROR: Faltan variables de entorno.")
     exit()
 
 bot = telebot.TeleBot(TOKEN_TELEGRAM)
@@ -22,10 +22,10 @@ if not os.path.exists(DOWNLOAD_FOLDER):
     os.makedirs(DOWNLOAD_FOLDER)
 
 # ============================================
-# LOGIN INSTAGRAM
+# LOGIN INSTAGRAM - Solo carga sesión existente
 # ============================================
 def login_instagram():
-    """Carga la sesión existente SIN hacer login nuevo."""
+    """Carga la sesión guardada SIN hacer login nuevo."""
     try:
         SESSION_FILE = "session.json"
         if os.path.exists(SESSION_FILE):
@@ -33,7 +33,7 @@ def login_instagram():
             print("✅ Sesión cargada correctamente.")
             return True
         else:
-            print("❌ No existe session.json. Sube el archivo a Railway.")
+            print("❌ No existe session.json. Sube el archivo.")
             return False
     except Exception as e:
         print(f"❌ Error cargando sesión: {e}")
@@ -42,7 +42,7 @@ def login_instagram():
 login_instagram()
 
 # ============================================
-# TECLADO PRINCIPAL
+# TECLADO
 # ============================================
 main_keyboard = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
 main_keyboard.add("📥 Cómo usar", "ℹ️ Info")
@@ -53,25 +53,9 @@ main_keyboard.add("📊 Estado", "❓ Ayuda")
 # ============================================
 @bot.message_handler(commands=['start'])
 def handle_start(message):
-    welcome_text = """
-👋 *¡Bienvenido al Bot de Instagram!*
-
-Descarga contenido de Instagram de forma rápida.
-
-*✨ Tipos soportados:*
-📸 Fotos
-🎬 Videos / Reels
-📁 Carruseles completos
-⭐ Stories
-
-*📌 Cómo usar:*
-Envía un enlace de Instagram.
-
-👇 Usa los botones o envía un enlace.
-"""
     bot.send_message(
         message.chat.id, 
-        welcome_text, 
+        "👋 *¡Bienvenido!*\n\nEnvía un enlace de Instagram para descargar.",
         parse_mode='Markdown',
         reply_markup=main_keyboard
     )
@@ -79,98 +63,63 @@ Envía un enlace de Instagram.
 
 @bot.message_handler(commands=['help'])
 def handle_help(message):
-    help_text = """
-📚 *Ayuda del Bot*
-
-*🔧 Comandos:*
-/start - Iniciar el bot
-/help - Mostrar ayuda
-/status - Estado del bot
-
-*📥 Enlaces soportados:*
-• instagram.com/p/...
-• instagram.com/reel/...
-• instagram.com/stories/...
-
-⚠️ Solo perfiles públicos.
-"""
-    bot.send_message(message.chat.id, help_text, parse_mode='Markdown')
+    bot.send_message(
+        message.chat.id, 
+        "📚 *Ayuda*\n\nEnvía un enlace de Instagram.\n\nSoporta: Posts, Reels, Stories, Carruseles.",
+        parse_mode='Markdown'
+    )
 
 
 @bot.message_handler(commands=['status'])
 def handle_status(message):
     ig_status = '✅ Conectado' if cl.user_id else '❌ No conectado'
-    session_status = '✅ Guardada' if os.path.exists('session.json') else '❌ No guardada'
-    
-    status_text = f"""
-📊 *Estado del Bot*
-
-🤖 Bot: ✅ En línea
-📸 Instagram: {ig_status}
-💾 Sesión: {session_status}
-"""
-    bot.send_message(message.chat.id, status_text, parse_mode='Markdown')
+    bot.send_message(
+        message.chat.id, 
+        f"📊 Estado:\n\n🤖 Bot: ✅\n📸 Instagram: {ig_status}",
+        parse_mode='Markdown'
+    )
 
 
 # ============================================
-# MANEJO DE BOTONES
+# BOTONES
 # ============================================
 @bot.message_handler(func=lambda m: m.text in ["📥 Cómo usar", "ℹ️ Info", "📊 Estado", "❓ Ayuda"])
 def handle_buttons(message):
     if message.text == "📥 Cómo usar":
-        text = "📥 *¿Cómo descargar?*\n\n1️⃣ Copia un enlace de Instagram\n2️⃣ Pégalo aquí\n3️⃣ Recibe tu archivo ✅"
-        bot.send_message(message.chat.id, text, parse_mode='Markdown')
-    
+        bot.send_message(message.chat.id, "📥 Pega un enlace de Instagram y listo.", parse_mode='Markdown')
     elif message.text == "ℹ️ Info":
-        text = "ℹ️ *Bot de Instagram v2.0*\n\n✅ Fotos y Videos\n✅ Reels\n✅ Carruseles\n✅ Stories"
-        bot.send_message(message.chat.id, text, parse_mode='Markdown')
-    
+        bot.send_message(message.chat.id, "ℹ️ Bot Instagram v2.0\n\n✅ Posts\n✅ Reels\n✅ Stories\n✅ Carruseles", parse_mode='Markdown')
     elif message.text == "📊 Estado":
         handle_status(message)
-    
     elif message.text == "❓ Ayuda":
         handle_help(message)
 
 
 # ============================================
-# FUNCIÓN PARA REACCIONES (EMOJIS VÁLIDOS)
+# FUNCIÓN REACCIÓN
 # ============================================
 def set_reaction(chat_id, message_id, emoji):
-    """Pone una reacción válida en el mensaje."""
-    valid_emojis = ['👍', '❤️', '🔥', '🎉', '😢', '😡', '✅', '❌']
-    if emoji not in valid_emojis:
-        emoji = '👍'  # Emoji por defecto si no es válido
-    
+    valid = ['👍', '❤️', '🔥', '🎉', '😢', '😡', '✅', '❌']
+    if emoji not in valid:
+        emoji = '👍'
     try:
-        bot.set_message_reaction(
-            chat_id, 
-            message_id, 
-            reaction=[telebot.types.ReactionTypeEmoji(emoji)]
-        )
-    except Exception as e:
-        print(f"No se pudo poner reacción: {e}")
+        bot.set_message_reaction(chat_id, message_id, reaction=[telebot.types.ReactionTypeEmoji(emoji)])
+    except:
+        pass
 
 
 # ============================================
-# FUNCIÓN PARA PROCESAR STORIES
+# PROCESAR STORY
 # ============================================
 def process_story(message, url):
-    """Procesa una story de Instagram."""
     try:
         set_reaction(message.chat.id, message.message_id, '🔥')
         
         parts = url.split('/stories/')
-        if len(parts) < 2:
-            raise Exception("URL de story inválida")
-        
         story_part = parts[1].split('?')[0].rstrip('/')
         story_parts = story_part.split('/')
-        
-        username = story_parts[0] if story_parts else None
+        username = story_parts[0]
         story_id = story_parts[1] if len(story_parts) > 1 else None
-        
-        if not username:
-            raise Exception("No se pudo extraer el usuario")
         
         user_id = cl.user_id_from_username(username)
         
@@ -181,131 +130,112 @@ def process_story(message, url):
             if stories:
                 file_path = cl.story_download(stories[0].id, folder=DOWNLOAD_FOLDER)
             else:
-                raise Exception("No hay stories disponibles")
+                raise Exception("No hay stories")
         
         if file_path:
             if str(file_path).endswith('.mp4'):
-                with open(file_path, 'rb') as video_file:
-                    bot.send_video(message.chat.id, video_file, caption="✅ Story descargada")
+                with open(file_path, 'rb') as f:
+                    bot.send_video(message.chat.id, f, caption="✅ Story")
             else:
-                with open(file_path, 'rb') as photo_file:
-                    bot.send_photo(message.chat.id, photo_file, caption="✅ Story descargada")
-            
-            if os.path.exists(file_path):
-                os.remove(file_path)
+                with open(file_path, 'rb') as f:
+                    bot.send_photo(message.chat.id, f, caption="✅ Story")
+            os.remove(file_path)
         
         set_reaction(message.chat.id, message.message_id, '✅')
-        
     except Exception as e:
-        print(f"Error en story: {e}")
+        print(f"Error story: {e}")
         set_reaction(message.chat.id, message.message_id, '❌')
-        bot.reply_to(message, f"❌ Error: {str(e)[:80]}")
+        bot.reply_to(message, f"❌ Error: {str(e)[:60]}")
 
 
 # ============================================
-# FUNCIÓN PARA PROCESAR POSTS/REELS/CARRUSELES
+# PROCESAR POST/REEL/CARRUSEL
 # ============================================
 def process_post(message, url):
-    """Procesa un post, reel o carrusel de Instagram."""
     try:
         media_pk = cl.media_pk_from_url(url)
         media_info = cl.media_info(media_pk)
         
-        # FOTO SIMPLE
+        # Foto simple
         if media_info.media_type == 1:
             file_path = cl.photo_download(media_pk, folder=DOWNLOAD_FOLDER)
-            with open(file_path, 'rb') as photo_file:
-                bot.send_photo(message.chat.id, photo_file, caption="✅ Foto descargada")
-            if os.path.exists(file_path):
-                os.remove(file_path)
+            with open(file_path, 'rb') as f:
+                bot.send_photo(message.chat.id, f, caption="✅ Foto")
+            os.remove(file_path)
         
-        # VIDEO O REEL
+        # Video/Reel
         elif media_info.media_type == 2:
             file_path = cl.video_download(media_pk, folder=DOWNLOAD_FOLDER)
-            with open(file_path, 'rb') as video_file:
-                bot.send_video(message.chat.id, video_file, caption="✅ Video descargado")
-            if os.path.exists(file_path):
-                os.remove(file_path)
+            with open(file_path, 'rb') as f:
+                bot.send_video(message.chat.id, f, caption="✅ Video")
+            os.remove(file_path)
         
-        # CARRUSEL
+        # Carrusel
         elif media_info.media_type == 8:
-            total_items = len(media_info.resources)
-            bot.send_message(message.chat.id, f"📁 Carrusel ({total_items} elementos)")
+            total = len(media_info.resources)
+            bot.send_message(message.chat.id, f"📁 Carrusel ({total} elementos)")
             
-            files_to_send = []
-            
-            for i, resource in enumerate(media_info.resources):
+            files = []
+            for i, r in enumerate(media_info.resources):
                 try:
-                    bot.send_message(message.chat.id, f"⬇️ {i+1}/{total_items}...")
-                    
-                    if resource.media_type == 2:
-                        file_path = cl.video_download(resource.pk, folder=DOWNLOAD_FOLDER)
+                    bot.send_message(message.chat.id, f"⬇️ {i+1}/{total}")
+                    if r.media_type == 2:
+                        fp = cl.video_download(r.pk, folder=DOWNLOAD_FOLDER)
                     else:
-                        file_path = cl.photo_download(resource.pk, folder=DOWNLOAD_FOLDER)
-                    
-                    files_to_send.append((str(file_path), resource.media_type))
-                    
+                        fp = cl.photo_download(r.pk, folder=DOWNLOAD_FOLDER)
+                    files.append((str(fp), r.media_type))
                 except Exception as e:
                     print(f"Error elemento {i+1}: {e}")
             
             # Enviar en grupos de 10
-            if files_to_send:
-                for i in range(0, len(files_to_send), 10):
-                    batch = files_to_send[i:i+10]
-                    media_group = []
-                    
-                    for file_path, media_type in batch:
-                        try:
-                            if media_type == 2:
-                                with open(file_path, 'rb') as f:
-                                    media_group.append(telebot.types.InputMediaVideo(f))
-                            else:
-                                with open(file_path, 'rb') as f:
-                                    media_group.append(telebot.types.InputMediaPhoto(f))
-                        except Exception as e:
-                            print(f"Error preparando archivo: {e}")
-                    
-                    if media_group:
-                        bot.send_media_group(message.chat.id, media_group)
-                
-                for file_path, _ in files_to_send:
-                    if os.path.exists(file_path):
-                        os.remove(file_path)
+            for i in range(0, len(files), 10):
+                batch = files[i:i+10]
+                group = []
+                for fp, mt in batch:
+                    try:
+                        if mt == 2:
+                            with open(fp, 'rb') as f:
+                                group.append(telebot.types.InputMediaVideo(f))
+                        else:
+                            with open(fp, 'rb') as f:
+                                group.append(telebot.types.InputMediaPhoto(f))
+                    except:
+                        pass
+                if group:
+                    bot.send_media_group(message.chat.id, group)
+            
+            for fp, _ in files:
+                if os.path.exists(fp):
+                    os.remove(fp)
         
         set_reaction(message.chat.id, message.message_id, '✅')
-            
     except Exception as e:
-        print(f"Error procesando: {e}")
+        print(f"Error post: {e}")
         set_reaction(message.chat.id, message.message_id, '❌')
-        bot.reply_to(message, f"❌ Error: {str(e)[:80]}")
+        bot.reply_to(message, f"❌ Error: {str(e)[:60]}")
 
 
 # ============================================
-# FUNCIÓN PRINCIPAL DE PROCESAMIENTO
+# PROCESAR ENLACE
 # ============================================
 def process_instagram_link(message, url):
-    """Función principal que procesa enlaces de Instagram."""
     try:
         set_reaction(message.chat.id, message.message_id, '🔥')
-        
         if '/stories/' in url:
             process_story(message, url)
         else:
             process_post(message, url)
-            
     except Exception as e:
-        print(f"Error general: {e}")
+        print(f"Error: {e}")
         set_reaction(message.chat.id, message.message_id, '❌')
-        bot.reply_to(message, f"❌ Error: {str(e)[:80]}")
 
 
 # ============================================
-# MANEJADOR DE ENLACES
+# MANEJADOR ENLACES
 # ============================================
-@bot.message_handler(func=lambda message: "instagram.com" in message.text)
-def handle_instagram_link(message):
-    url = message.text.strip()
-    thread = threading.Thread(target=process_instagram_link, args=(message, url))
+@bot.message_handler(func=lambda m: "instagram.com" in m.text)
+def handle_link(message):
+    thread = threading.Thread(target=process_instagram_link, args=(message, message.text.strip()))
     thread.daemon = True
     thread.start()
 
@@ -313,14 +243,9 @@ def handle_instagram_link(message):
 # ============================================
 # MENSAJE POR DEFECTO
 # ============================================
-@bot.message_handler(func=lambda message: True)
+@bot.message_handler(func=lambda m: True)
 def handle_unknown(message):
-    bot.send_message(
-        message.chat.id,
-        "🤔 No reconozco eso.\n\nEnvía un enlace de Instagram o usa /help",
-        parse_mode='Markdown',
-        reply_markup=main_keyboard
-    )
+    bot.send_message(message.chat.id, "🤔 Envía un enlace de Instagram o usa /help", reply_markup=main_keyboard)
 
 
 # ============================================
@@ -328,4 +253,4 @@ def handle_unknown(message):
 # ============================================
 if __name__ == '__main__':
     print("🤖 Bot iniciado...")
-    bot.infinity_polling(timeout=10, long_polling_timeout=5)
+    bot.infinity_polling(timeout=10, long_polling_timeout=5, skip_pending=True)
